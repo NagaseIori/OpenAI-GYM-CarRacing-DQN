@@ -1,5 +1,5 @@
 import argparse
-import gym
+import gymnasium as gym
 from collections import deque
 from CarRacingDQNAgent import CarRacingDQNAgent
 from common_functions import process_state_image

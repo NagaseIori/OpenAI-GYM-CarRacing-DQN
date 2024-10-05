@@ -1,4 +1,4 @@
-import gym
+import gymnasium as gym
 
 is_pressed_left  = False # control left
 is_pressed_right = False # control right

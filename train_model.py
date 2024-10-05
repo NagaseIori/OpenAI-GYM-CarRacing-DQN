@@ -1,5 +1,5 @@
 import argparse
-import gym
+import gymnasium as gym
 from collections import deque
 from CarRacingDQNAgent import CarRacingDQNAgent
 from common_functions import process_state_image
@@ -21,7 +21,8 @@ if __name__ == '__main__':
     parser.add_argument('-p', '--epsilon', type=float, default=1.0, help='The starting epsilon of the agent, default to 1.0.')
     args = parser.parse_args()
 
-    env = gym.make('CarRacing-v0')
+    # Updated to use CarRacing-v2 environment
+    env = gym.make('CarRacing-v2', render_mode = "rgb_array")
     agent = CarRacingDQNAgent(epsilon=args.epsilon)
     if args.model:
         agent.load(args.model)
@@ -30,27 +31,33 @@ if __name__ == '__main__':
     if args.end:
         ENDING_EPISODE = args.end
 
-    for e in range(STARTING_EPISODE, ENDING_EPISODE+1):
-        init_state = env.reset()
+    for e in range(STARTING_EPISODE, ENDING_EPISODE + 1):
+        # Updated reset method for compatibility with gymnasium
+        init_state, _ = env.reset()
         init_state = process_state_image(init_state)
 
         total_reward = 0
         negative_reward_counter = 0
-        state_frame_stack_queue = deque([init_state]*agent.frame_stack_num, maxlen=agent.frame_stack_num)
+        state_frame_stack_queue = deque([init_state] * agent.frame_stack_num, maxlen=agent.frame_stack_num)
         time_frame_counter = 1
         done = False
-        
-        while True:
+
+        while not done:
             if RENDER:
                 env.render()
 
+            # Update the current state frame stack to match PyTorch channel order (C, H, W)
             current_state_frame_stack = generate_state_frame_stack_from_queue(state_frame_stack_queue)
-            action = agent.act(current_state_frame_stack)
+            current_state_frame_stack = current_state_frame_stack.transpose(2, 0, 1)  # Convert to (C, H, W)
+
+            action_values = agent.act(current_state_frame_stack)
+            action = [float(val) for val in action_values]  # Ensure action is float for environment compatibility
 
             reward = 0
-            for _ in range(SKIP_FRAMES+1):
-                next_state, r, done, info = env.step(action)
+            for __ in range(SKIP_FRAMES + 1):
+                next_state, r, terminated, truncated, _ = env.step(action)
                 reward += r
+                done = terminated or truncated
                 if done:
                     break
 
@@ -66,11 +73,13 @@ if __name__ == '__main__':
             next_state = process_state_image(next_state)
             state_frame_stack_queue.append(next_state)
             next_state_frame_stack = generate_state_frame_stack_from_queue(state_frame_stack_queue)
+            next_state_frame_stack = next_state_frame_stack.transpose(2, 0, 1)  # Convert to (C, H, W)
 
-            agent.memorize(current_state_frame_stack, action, reward, next_state_frame_stack, done)
+            agent.memorize(current_state_frame_stack, action_values, reward, next_state_frame_stack, done)
 
             if done or negative_reward_counter >= 25 or total_reward < 0:
-                print('Episode: {}/{}, Scores(Time Frames): {}, Total Rewards(adjusted): {:.2}, Epsilon: {:.2}'.format(e, ENDING_EPISODE, time_frame_counter, float(total_reward), float(agent.epsilon)))
+                print('Episode: {}/{}, Scores(Time Frames): {}, Total Rewards(adjusted): {:.2f}, Epsilon: {:.2f}'.format(
+                    e, ENDING_EPISODE, time_frame_counter, float(total_reward), float(agent.epsilon)))
                 break
             if len(agent.memory) > TRAINING_BATCH_SIZE:
                 agent.replay(TRAINING_BATCH_SIZE)
@@ -80,6 +89,6 @@ if __name__ == '__main__':
             agent.update_target_model()
 
         if e % SAVE_TRAINING_FREQUENCY == 0:
-            agent.save('./save/trial_{}.h5'.format(e))
+            agent.save('./save/trial_{}.pth'.format(e))
 
     env.close()

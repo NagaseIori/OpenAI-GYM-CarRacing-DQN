@@ -1,86 +1,152 @@
 import random
 import numpy as np
 from collections import deque
-from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D, MaxPooling2D, Flatten, Dense
-from tensorflow.keras.optimizers import Adam
+import torch
+import torch.nn as nn
+import torch.optim as optim
+import torch.nn.functional as F
+
 
 class CarRacingDQNAgent:
     def __init__(
         self,
-        action_space    = [
-            (-1, 1, 0.2), (0, 1, 0.2), (1, 1, 0.2), #           Action Space Structure
-            (-1, 1,   0), (0, 1,   0), (1, 1,   0), #        (Steering Wheel, Gas, Break)
-            (-1, 0, 0.2), (0, 0, 0.2), (1, 0, 0.2), # Range        -1~1       0~1   0~1
-            (-1, 0,   0), (0, 0,   0), (1, 0,   0)
+        action_space=[
+            (-1, 1, 0.2),
+            (0, 1, 0.2),
+            (1, 1, 0.2),  #           Action Space Structure
+            (-1, 1, 0),
+            (0, 1, 0),
+            (1, 1, 0),  #        (Steering Wheel, Gas, Break)
+            (-1, 0, 0.2),
+            (0, 0, 0.2),
+            (1, 0, 0.2),  # Range        -1~1       0~1   0~1
+            (-1, 0, 0),
+            (0, 0, 0),
+            (1, 0, 0),
         ],
-        frame_stack_num = 3,
-        memory_size     = 5000,
-        gamma           = 0.95,  # discount rate
-        epsilon         = 1.0,   # exploration rate
-        epsilon_min     = 0.1,
-        epsilon_decay   = 0.9999,
-        learning_rate   = 0.001
+        frame_stack_num=3,
+        memory_size=5000,
+        gamma=0.95,  # discount rate
+        epsilon=1.0,  # exploration rate
+        epsilon_min=0.1,
+        epsilon_decay=0.9999,
+        learning_rate=0.001,
     ):
-        self.action_space    = action_space
+        self.action_space = action_space
         self.frame_stack_num = frame_stack_num
-        self.memory          = deque(maxlen=memory_size)
-        self.gamma           = gamma
-        self.epsilon         = epsilon
-        self.epsilon_min     = epsilon_min
-        self.epsilon_decay   = epsilon_decay
-        self.learning_rate   = learning_rate
-        self.model           = self.build_model()
-        self.target_model    = self.build_model()
+        self.memory = deque(maxlen=memory_size)
+        self.gamma = gamma
+        self.epsilon = epsilon
+        self.epsilon_min = epsilon_min
+        self.epsilon_decay = epsilon_decay
+        self.learning_rate = learning_rate
+        # Set the device to GPU if available, otherwise use CPU
+        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        # Build the model and target model, and move them to the appropriate device
+        self.model = self.build_model().to(self.device)
+        self.target_model = self.build_model().to(self.device)
         self.update_target_model()
+        # Initialize the optimizer with Adam
+        self.optimizer = optim.Adam(
+            self.model.parameters(), lr=self.learning_rate, eps=1e-7
+        )
 
     def build_model(self):
         # Neural Net for Deep-Q learning Model
-        model = Sequential()
-        model.add(Conv2D(filters=6, kernel_size=(7, 7), strides=3, activation='relu', input_shape=(96, 96, self.frame_stack_num)))
-        model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Conv2D(filters=12, kernel_size=(4, 4), activation='relu'))
-        model.add(MaxPooling2D(pool_size=(2, 2)))
-        model.add(Flatten())
-        model.add(Dense(216, activation='relu'))
-        model.add(Dense(len(self.action_space), activation=None))
-        model.compile(loss='mean_squared_error', optimizer=Adam(lr=self.learning_rate, epsilon=1e-7))
+        model = nn.Sequential(
+            nn.Conv2d(
+                self.frame_stack_num, 6, kernel_size=7, stride=3
+            ),  # Convolutional layer with 6 filters
+            nn.ReLU(),  # Activation function
+            nn.MaxPool2d(kernel_size=2),  # Max pooling layer
+            nn.Conv2d(6, 12, kernel_size=4),  # Convolutional layer with 12 filters
+            nn.ReLU(),  # Activation function
+            nn.MaxPool2d(kernel_size=2),  # Max pooling layer
+            nn.Flatten(),  # Flatten the tensor
+            nn.Linear(432, 216),  # Adjusted input size for fully connected layer
+            nn.ReLU(),  # Activation function
+            nn.Linear(
+                216, len(self.action_space)
+            ),  # Output layer with the number of actions
+        )
         return model
 
     def update_target_model(self):
-        self.target_model.set_weights(self.model.get_weights())
+        # Copy weights from the main model to the target model
+        self.target_model.load_state_dict(self.model.state_dict())
 
     def memorize(self, state, action, reward, next_state, done):
-        self.memory.append((state, self.action_space.index(action), reward, next_state, done))
+        # Store the experience in memory
+        self.memory.append(
+            (state, self.action_space.index(action), reward, next_state, done)
+        )
 
     def act(self, state):
+        # Decide on an action using epsilon-greedy policy
         if np.random.rand() > self.epsilon:
-            act_values = self.model.predict(np.expand_dims(state, axis=0))
-            action_index = np.argmax(act_values[0])
+            # Convert state to a tensor and pass through the model to get action values
+            state = torch.tensor(
+                state, dtype=torch.float32, device=self.device
+            ).unsqueeze(0)
+            with torch.no_grad():
+                act_values = self.model(state)
+            # Choose the action with the highest value
+            action_index = torch.argmax(act_values).item()
         else:
+            # Choose a random action
             action_index = random.randrange(len(self.action_space))
         return self.action_space[action_index]
 
     def replay(self, batch_size):
+        # Train the model using randomly sampled experiences from memory
+        if len(self.memory) < batch_size:
+            return
         minibatch = random.sample(self.memory, batch_size)
         train_state = []
         train_target = []
         for state, action_index, reward, next_state, done in minibatch:
-            target = self.model.predict(np.expand_dims(state, axis=0))[0]
+            # Convert state and next_state to tensors
+            state = torch.tensor(state, dtype=torch.float32, device=self.device)
+            next_state = torch.tensor(
+                next_state, dtype=torch.float32, device=self.device
+            )
+            # Get the current prediction for the given state
+            target = self.model(state.unsqueeze(0)).squeeze(0).detach().cpu().numpy()
             if done:
+                # If the episode is done, the target is simply the reward
                 target[action_index] = reward
             else:
-                t = self.target_model.predict(np.expand_dims(next_state, axis=0))[0]
+                # Otherwise, calculate the target using the target model
+                t = (
+                    self.target_model(next_state.unsqueeze(0))
+                    .squeeze(0)
+                    .detach()
+                    .cpu()
+                    .numpy()
+                )
                 target[action_index] = reward + self.gamma * np.amax(t)
             train_state.append(state)
             train_target.append(target)
-        self.model.fit(np.array(train_state), np.array(train_target), epochs=1, verbose=0)
+        # Stack states and convert targets to tensors
+        train_state = torch.stack(train_state)
+        train_target = torch.tensor(
+            np.array(train_target), dtype=torch.float32, device=self.device
+        )
+        # Perform a gradient descent step
+        self.optimizer.zero_grad()
+        predictions = self.model(train_state)
+        loss = F.mse_loss(predictions, train_target)
+        loss.backward()
+        self.optimizer.step()
+        # Update epsilon for exploration-exploitation tradeoff
         if self.epsilon > self.epsilon_min:
             self.epsilon *= self.epsilon_decay
 
     def load(self, name):
-        self.model.load_weights(name)
+        # Load model weights from a file and update the target model
+        self.model.load_state_dict(torch.load(name))
         self.update_target_model()
 
     def save(self, name):
-        self.target_model.save_weights(name)
+        # Save the target model weights to a file
+        torch.save(self.target_model.state_dict(), name)
