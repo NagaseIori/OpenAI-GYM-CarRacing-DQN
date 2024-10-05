@@ -7,18 +7,18 @@ from common_functions import generate_state_frame_stack_from_queue
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Play CarRacing by the trained model.')
-    parser.add_argument('-m', '--model', required=True, help='The `.h5` file of the trained model.')
+    parser.add_argument('-m', '--model', required=True, help='The `.pth` file of the trained model.')
     parser.add_argument('-e', '--episodes', type=int, default=1, help='The number of episodes should the model plays.')
     args = parser.parse_args()
     train_model = args.model
     play_episodes = args.episodes
 
-    env = gym.make('CarRacing-v0')
+    env = gym.make('CarRacing-v2', render_mode = "human")
     agent = CarRacingDQNAgent(epsilon=0) # Set epsilon to 0 to ensure all actions are instructed by the agent
     agent.load(train_model)
 
     for e in range(play_episodes):
-        init_state = env.reset()
+        init_state, _ = env.reset()
         init_state = process_state_image(init_state)
 
         total_reward = 0
@@ -30,8 +30,9 @@ if __name__ == '__main__':
             env.render()
 
             current_state_frame_stack = generate_state_frame_stack_from_queue(state_frame_stack_queue)
+            current_state_frame_stack = current_state_frame_stack.transpose(2, 0, 1)  # Convert to (C, H, W)
             action = agent.act(current_state_frame_stack)
-            next_state, reward, done, info = env.step(action)
+            next_state, reward, done, info, _ = env.step(action)
 
             total_reward += reward
 
