@@ -11,27 +11,28 @@ class CarRacingDQNAgent:
     def __init__(
         self,
         action_space=[
-            (-1, 1, 0.2),
-            (0, 1, 0.2),
-            (1, 1, 0.2),  #           Action Space Structure
+            (-1, 1, 0.5),
+            (0, 1, 0.5),
+            (1, 1, 0.5),  #           Action Space Structure
             (-1, 1, 0),
             (0, 1, 0),
             (1, 1, 0),  #        (Steering Wheel, Gas, Break)
-            (-1, 0, 0.2),
-            (0, 0, 0.2),
-            (1, 0, 0.2),  # Range        -1~1       0~1   0~1
+            (-1, 0, 0.5),
+            (0, 0, 0.5),
+            (1, 0, 0.5),  # Range        -1~1       0~1   0~1
             (-1, 0, 0),
             (0, 0, 0),
             (1, 0, 0),
         ],
-        frame_stack_num=3,
-        memory_size=5000,
-        gamma=0.95,  # discount rate
-        epsilon=1.0,  # exploration rate
-        epsilon_min=0.1,
-        epsilon_decay=0.9999,
+        frame_stack_num=5,
+        memory_size=10000,
+        gamma=0.99,  # discount rate
+        epsilon=0.9,  # exploration rate
+        epsilon_min=0.05,
+        epsilon_decay=0.99995,
         learning_rate=0.001,
     ):
+        self._n_actions = 5
         self.action_space = action_space
         self.frame_stack_num = frame_stack_num
         self.memory = deque(maxlen=memory_size)
@@ -58,15 +59,17 @@ class CarRacingDQNAgent:
                 self.frame_stack_num, 6, kernel_size=7, stride=3
             ),  # Convolutional layer with 6 filters
             nn.ReLU(),  # Activation function
-            nn.MaxPool2d(kernel_size=2),  # Max pooling layer
+            # nn.MaxPool2d(kernel_size=2),  # Max pooling layer
             nn.Conv2d(6, 12, kernel_size=4),  # Convolutional layer with 12 filters
             nn.ReLU(),  # Activation function
-            nn.MaxPool2d(kernel_size=2),  # Max pooling layer
+            nn.Conv2d(12, 24, kernel_size=4),  # Convolutional layer with 12 filters
+            nn.ReLU(),  # Activation function
+            # nn.MaxPool2d(kernel_size=2),  # Max pooling layer
             nn.Flatten(),  # Flatten the tensor
-            nn.Linear(432, 216),  # Adjusted input size for fully connected layer
+            nn.Linear(13824, 512),  # Adjusted input size for fully connected layer
             nn.ReLU(),  # Activation function
             nn.Linear(
-                216, len(self.action_space)
+                512, 5
             ),  # Output layer with the number of actions
         )
         return model
@@ -78,7 +81,7 @@ class CarRacingDQNAgent:
     def memorize(self, state, action, reward, next_state, done):
         # Store the experience in memory
         self.memory.append(
-            (state, self.action_space.index(action), reward, next_state, done)
+            (state, action, reward, next_state, done)
         )
 
     def act(self, state):
@@ -94,8 +97,8 @@ class CarRacingDQNAgent:
             action_index = torch.argmax(act_values).item()
         else:
             # Choose a random action
-            action_index = random.randrange(len(self.action_space))
-        return self.action_space[action_index]
+            action_index = random.randrange(self._n_actions)
+        return action_index
 
     def replay(self, batch_size):
         # Train the model using randomly sampled experiences from memory

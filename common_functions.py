@@ -9,5 +9,4 @@ def process_state_image(state):
 
 def generate_state_frame_stack_from_queue(deque):
     frame_stack = np.array(deque)
-    # Move stack dimension to the channel dimension (stack, x, y) -> (x, y, stack)
-    return np.transpose(frame_stack, (1, 2, 0))
+    return frame_stack

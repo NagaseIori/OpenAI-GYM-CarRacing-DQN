@@ -5,25 +5,26 @@ from CarRacingDQNAgent import CarRacingDQNAgent
 from common_functions import process_state_image
 from common_functions import generate_state_frame_stack_from_queue
 
-RENDER                        = True
+RENDER                        = False
 STARTING_EPISODE              = 1
 ENDING_EPISODE                = 1000
-SKIP_FRAMES                   = 2
-TRAINING_BATCH_SIZE           = 64
+SKIP_FRAMES                   = 3
+TRAINING_BATCH_SIZE           = 128
 SAVE_TRAINING_FREQUENCY       = 25
-UPDATE_TARGET_MODEL_FREQUENCY = 5
+UPDATE_TARGET_MODEL_FREQUENCY = 2
+CONTINUOUS                    = False
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Training a DQN agent to play CarRacing.')
     parser.add_argument('-m', '--model', help='Specify the last trained model path if you want to continue training after it.')
     parser.add_argument('-s', '--start', type=int, help='The starting episode, default to 1.')
     parser.add_argument('-e', '--end', type=int, help='The ending episode, default to 1000.')
-    parser.add_argument('-p', '--epsilon', type=float, default=1.0, help='The starting epsilon of the agent, default to 1.0.')
+    parser.add_argument('-p', '--epsilon', type=float, default=0.9, help='The starting epsilon of the agent, default to 0.9.')
     args = parser.parse_args()
 
     # Updated to use CarRacing-v2 environment
-    env = gym.make('CarRacing-v2', render_mode = "rgb_array")
-    agent = CarRacingDQNAgent(epsilon=args.epsilon)
+    env = gym.make('CarRacing-v2', render_mode = "human" if RENDER else None, continuous = CONTINUOUS)
+    agent = CarRacingDQNAgent(epsilon=args.epsilon, action_space=env.action_space)
     if args.model:
         agent.load(args.model)
     if args.start:
@@ -48,10 +49,8 @@ if __name__ == '__main__':
 
             # Update the current state frame stack to match PyTorch channel order (C, H, W)
             current_state_frame_stack = generate_state_frame_stack_from_queue(state_frame_stack_queue)
-            current_state_frame_stack = current_state_frame_stack.transpose(2, 0, 1)  # Convert to (C, H, W)
 
-            action_values = agent.act(current_state_frame_stack)
-            action = [float(val) for val in action_values]  # Ensure action is float for environment compatibility
+            action = agent.act(current_state_frame_stack)
 
             reward = 0
             for __ in range(SKIP_FRAMES + 1):
@@ -64,20 +63,15 @@ if __name__ == '__main__':
             # If continually getting negative reward 10 times after the tolerance steps, terminate this episode
             negative_reward_counter = negative_reward_counter + 1 if time_frame_counter > 100 and reward < 0 else 0
 
-            # Extra bonus for the model if it uses full gas
-            if action[1] == 1 and action[2] == 0:
-                reward *= 1.5
-
             total_reward += reward
 
             next_state = process_state_image(next_state)
             state_frame_stack_queue.append(next_state)
             next_state_frame_stack = generate_state_frame_stack_from_queue(state_frame_stack_queue)
-            next_state_frame_stack = next_state_frame_stack.transpose(2, 0, 1)  # Convert to (C, H, W)
 
-            agent.memorize(current_state_frame_stack, action_values, reward, next_state_frame_stack, done)
+            agent.memorize(current_state_frame_stack, action, reward, next_state_frame_stack, done)
 
-            if done or negative_reward_counter >= 25 or total_reward < 0:
+            if done:
                 print('Episode: {}/{}, Scores(Time Frames): {}, Total Rewards(adjusted): {:.2f}, Epsilon: {:.2f}'.format(
                     e, ENDING_EPISODE, time_frame_counter, float(total_reward), float(agent.epsilon)))
                 break
