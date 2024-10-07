@@ -6,6 +6,7 @@ from common_functions import process_state_image
 from common_functions import generate_state_frame_stack_from_queue
 
 CONTINUOUS = False
+SKIP_FRAMES = 0
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Play CarRacing by the trained model.')
@@ -33,7 +34,15 @@ if __name__ == '__main__':
 
             current_state_frame_stack = generate_state_frame_stack_from_queue(state_frame_stack_queue)
             action = agent.act(current_state_frame_stack)
-            next_state, reward, done, info, _ = env.step(action)
+            
+            reward = 0
+            for __ in range(SKIP_FRAMES + 1):
+                next_state, r, terminated, truncated, _ = env.step(action)
+                reward += r
+                time_frame_counter += 1
+                done = terminated or truncated
+                if done:
+                    break
 
             total_reward += reward
 

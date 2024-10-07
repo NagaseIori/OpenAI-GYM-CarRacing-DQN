@@ -10,26 +10,13 @@ import torch.nn.functional as F
 class CarRacingDQNAgent:
     def __init__(
         self,
-        action_space=[
-            (-1, 1, 0.5),
-            (0, 1, 0.5),
-            (1, 1, 0.5),  #           Action Space Structure
-            (-1, 1, 0),
-            (0, 1, 0),
-            (1, 1, 0),  #        (Steering Wheel, Gas, Break)
-            (-1, 0, 0.5),
-            (0, 0, 0.5),
-            (1, 0, 0.5),  # Range        -1~1       0~1   0~1
-            (-1, 0, 0),
-            (0, 0, 0),
-            (1, 0, 0),
-        ],
+        action_space=3,
         frame_stack_num=5,
-        memory_size=10000,
+        memory_size=5000,
         gamma=0.99,  # discount rate
         epsilon=0.9,  # exploration rate
         epsilon_min=0.05,
-        epsilon_decay=0.99995,
+        epsilon_decay=0.99998,
         learning_rate=0.001,
     ):
         self._n_actions = 5
@@ -56,7 +43,7 @@ class CarRacingDQNAgent:
         # Neural Net for Deep-Q learning Model
         model = nn.Sequential(
             nn.Conv2d(
-                self.frame_stack_num, 6, kernel_size=7, stride=3
+                self.frame_stack_num * 3, 6, kernel_size=7, stride=3
             ),  # Convolutional layer with 6 filters
             nn.ReLU(),  # Activation function
             # nn.MaxPool2d(kernel_size=2),  # Max pooling layer
@@ -66,7 +53,7 @@ class CarRacingDQNAgent:
             nn.ReLU(),  # Activation function
             # nn.MaxPool2d(kernel_size=2),  # Max pooling layer
             nn.Flatten(),  # Flatten the tensor
-            nn.Linear(13824, 512),  # Adjusted input size for fully connected layer
+            nn.Linear(13824, 512),
             nn.ReLU(),  # Activation function
             nn.Linear(
                 512, 5
@@ -85,12 +72,14 @@ class CarRacingDQNAgent:
         )
 
     def act(self, state):
+        # 首先将状态转换为 tensor
+        state = torch.tensor(state, dtype=torch.float32, device=self.device)
+        
+        # 调整维度：从 [stack, width, height, 3] 变为 [stack * 3, width, height]
+        state = state.permute(0, 3, 1, 2).reshape(-1, state.shape[1], state.shape[2]).unsqueeze(0)
+
         # Decide on an action using epsilon-greedy policy
         if np.random.rand() > self.epsilon:
-            # Convert state to a tensor and pass through the model to get action values
-            state = torch.tensor(
-                state, dtype=torch.float32, device=self.device
-            ).unsqueeze(0)
             with torch.no_grad():
                 act_values = self.model(state)
             # Choose the action with the highest value
@@ -108,11 +97,14 @@ class CarRacingDQNAgent:
         train_state = []
         train_target = []
         for state, action_index, reward, next_state, done in minibatch:
-            # Convert state and next_state to tensors
+            # 将状态转换为 tensor
             state = torch.tensor(state, dtype=torch.float32, device=self.device)
-            next_state = torch.tensor(
-                next_state, dtype=torch.float32, device=self.device
-            )
+            next_state = torch.tensor(next_state, dtype=torch.float32, device=self.device)
+            
+            # 调整维度：从 [stack, width, height, 3] 变为 [stack * 3, width, height]
+            state = state.permute(0, 3, 1, 2).reshape(-1, state.shape[1], state.shape[2])
+            next_state = next_state.permute(0, 3, 1, 2).reshape(-1, next_state.shape[1], next_state.shape[2])
+            
             # Get the current prediction for the given state
             target = self.model(state.unsqueeze(0)).squeeze(0).detach().cpu().numpy()
             if done:

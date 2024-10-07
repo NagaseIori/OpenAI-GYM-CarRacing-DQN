@@ -8,7 +8,7 @@ from common_functions import generate_state_frame_stack_from_queue
 RENDER                        = False
 STARTING_EPISODE              = 1
 ENDING_EPISODE                = 1000
-SKIP_FRAMES                   = 3
+SKIP_FRAMES                   = 2
 TRAINING_BATCH_SIZE           = 128
 SAVE_TRAINING_FREQUENCY       = 25
 UPDATE_TARGET_MODEL_FREQUENCY = 2
@@ -19,7 +19,7 @@ if __name__ == '__main__':
     parser.add_argument('-m', '--model', help='Specify the last trained model path if you want to continue training after it.')
     parser.add_argument('-s', '--start', type=int, help='The starting episode, default to 1.')
     parser.add_argument('-e', '--end', type=int, help='The ending episode, default to 1000.')
-    parser.add_argument('-p', '--epsilon', type=float, default=0.9, help='The starting epsilon of the agent, default to 0.9.')
+    parser.add_argument('-p', '--epsilon', type=float, default=1.0, help='The starting epsilon of the agent, default to 1.0.')
     args = parser.parse_args()
 
     # Updated to use CarRacing-v2 environment
@@ -83,6 +83,6 @@ if __name__ == '__main__':
             agent.update_target_model()
 
         if e % SAVE_TRAINING_FREQUENCY == 0:
-            agent.save('./save/trial_{}.pth'.format(e))
+            agent.save('./save/trial_no_skip_with_rgb_{}.pth'.format(e))
 
     env.close()
