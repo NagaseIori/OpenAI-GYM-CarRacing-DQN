@@ -32,7 +32,8 @@ if __name__ == '__main__':
             current_state_frame_stack = generate_state_frame_stack_from_queue(state_frame_stack_queue)
             current_state_frame_stack = current_state_frame_stack.transpose(2, 0, 1)  # Convert to (C, H, W)
             action = agent.act(current_state_frame_stack)
-            next_state, reward, done, info, _ = env.step(action)
+            next_state, reward, ter, trun, _ = env.step(action)
+            done = ter or trun
 
             total_reward += reward
 

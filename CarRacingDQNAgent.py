@@ -24,7 +24,7 @@ class CarRacingDQNAgent:
             (0, 0, 0),
             (1, 0, 0),
         ],
-        frame_stack_num=3,
+        frame_stack_num=2,
         memory_size=5000,
         gamma=0.95,  # discount rate
         epsilon=1.0,  # exploration rate
@@ -60,13 +60,14 @@ class CarRacingDQNAgent:
             nn.ReLU(),  # Activation function
             nn.MaxPool2d(kernel_size=2),  # Max pooling layer
             nn.Conv2d(6, 12, kernel_size=4),  # Convolutional layer with 12 filters
-            nn.ReLU(),  # Activation function
-            nn.MaxPool2d(kernel_size=2),  # Max pooling layer
+            nn.ReLU(),  # Activation function  # Max pooling layer
+            nn.Conv2d(12, 32, kernel_size=3),
+            nn.ReLU(),
             nn.Flatten(),  # Flatten the tensor
-            nn.Linear(432, 216),  # Adjusted input size for fully connected layer
+            nn.Linear(3200, 256),  # Adjusted input size for fully connected layer
             nn.ReLU(),  # Activation function
             nn.Linear(
-                216, len(self.action_space)
+                256, len(self.action_space)
             ),  # Output layer with the number of actions
         )
         return model
